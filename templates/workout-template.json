@@ -1,0 +1,29 @@
+{
+  "_comment": "Schema/example for data/current-workout.json. Remove this _comment field in the real file.",
+  "id": "2026-07-07-am",
+  "performedAt": "2026-07-07T09:00",
+  "status": "in_progress",
+  "title": "Push Day",
+  "preferences": {
+    "timeAvailableMinutes": 60,
+    "focus": "upper body",
+    "notes": "hiking later today, keep it light"
+  },
+  "exercises": [
+    {
+      "name": "Dumbbell Bench Press",
+      "muscleGroup": "Chest",
+      "type": "compound",
+      "targetSets": 3,
+      "targetReps": "6-10",
+      "comment": "",
+      "increaseWeightNextTime": false,
+      "sets": [
+        { "setNumber": 1, "weight": null, "reps": null },
+        { "setNumber": 2, "weight": null, "reps": null },
+        { "setNumber": 3, "weight": null, "reps": null }
+      ]
+    }
+  ],
+  "comment": ""
+}

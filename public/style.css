@@ -1,0 +1,340 @@
+:root {
+  --bg: #0f1115;
+  --surface: #1a1d24;
+  --surface-2: #23272f;
+  --border: #2e333d;
+  --text: #f0f1f3;
+  --text-dim: #9aa0ab;
+  --accent: #4f8cff;
+  --accent-dim: #2d4b8a;
+  --good: #3ecf8e;
+  --warn: #e8b339;
+  font-size: 16px;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  padding-bottom: 3rem;
+}
+
+.topbar {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  padding: 1rem 1.25rem;
+  border-bottom: 1px solid var(--border);
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  z-index: 10;
+}
+
+.topbar h1 {
+  font-size: 1.15rem;
+  margin: 0;
+  font-weight: 600;
+  flex: 1;
+}
+
+.unit-toggle-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.4rem 0.75rem;
+  font-size: 0.85rem;
+  font-weight: 600;
+  cursor: pointer;
+  text-transform: uppercase;
+}
+
+.icon-btn {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  width: 2.25rem;
+  height: 2.25rem;
+  font-size: 1.1rem;
+  cursor: pointer;
+}
+
+#app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 1.25rem;
+}
+
+.menu {
+  display: grid;
+  gap: 0.9rem;
+  margin-top: 0.5rem;
+}
+
+.menu-btn {
+  display: flex;
+  align-items: center;
+  gap: 0.9rem;
+  padding: 1.1rem 1.2rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  color: var(--text);
+  font-size: 1.05rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.menu-btn:active { background: var(--surface-2); }
+
+.menu-icon {
+  font-size: 1.4rem;
+  width: 2rem;
+  text-align: center;
+}
+
+.card {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+.form { display: grid; gap: 1rem; }
+
+.form label {
+  display: grid;
+  gap: 0.4rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+input, select, textarea {
+  background: var(--surface-2);
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 8px;
+  padding: 0.65rem 0.75rem;
+  font-size: 1rem;
+  font-family: inherit;
+}
+
+.primary-btn {
+  background: var(--accent);
+  color: white;
+  border: none;
+  border-radius: 10px;
+  padding: 0.85rem;
+  font-size: 1rem;
+  font-weight: 600;
+  cursor: pointer;
+  margin-top: 0.25rem;
+}
+
+.primary-btn:active { background: var(--accent-dim); }
+
+.secondary-btn {
+  background: transparent;
+  border: 1px solid var(--border);
+  color: var(--text);
+  border-radius: 10px;
+  padding: 0.7rem;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.danger-btn {
+  background: transparent;
+  border: 1px solid #7a3535;
+  color: #ff8383;
+  border-radius: 10px;
+  padding: 0.7rem;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.empty-state {
+  text-align: center;
+  color: var(--text-dim);
+  padding: 2.5rem 1rem;
+  line-height: 1.5;
+}
+
+.pill {
+  display: inline-block;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  background: var(--surface-2);
+  color: var(--text-dim);
+  border: 1px solid var(--border);
+}
+
+.exercise-card { margin-bottom: 1rem; }
+
+.exercise-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 0.75rem;
+}
+
+.exercise-header h3 { margin: 0; font-size: 1.05rem; }
+.exercise-meta { font-size: 0.8rem; color: var(--text-dim); }
+
+.set-row {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr 1fr;
+  gap: 0.5rem;
+  align-items: center;
+  margin-bottom: 0.5rem;
+}
+
+.set-row .set-label {
+  color: var(--text-dim);
+  font-size: 0.85rem;
+}
+
+.set-row input { width: 100%; text-align: center; }
+
+.exercise-comment {
+  margin-top: 0.5rem;
+  width: 100%;
+  min-height: 3.2rem;
+  resize: vertical;
+}
+
+.increase-weight-label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  margin-top: 0.75rem;
+  font-size: 0.9rem;
+  color: var(--text-dim);
+}
+
+.increase-weight-label input[type="checkbox"] {
+  width: 1.1rem;
+  height: 1.1rem;
+  accent-color: var(--accent);
+}
+
+.workout-summary {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1rem;
+}
+
+.workout-summary h2 { margin: 0 0 0.15rem 0; }
+
+.action-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-top: 1.25rem;
+}
+
+.history-item {
+  padding: 1rem;
+  border-bottom: 1px solid var(--border);
+}
+
+.history-item:last-child { border-bottom: none; }
+
+.history-item summary {
+  cursor: pointer;
+  font-weight: 600;
+  display: flex;
+  justify-content: space-between;
+}
+
+.history-exercise {
+  margin-top: 0.75rem;
+  padding-left: 0.5rem;
+  border-left: 2px solid var(--border);
+}
+
+.increase-flag {
+  color: var(--good);
+}
+
+.history-sets {
+  color: var(--text-dim);
+  font-size: 0.9rem;
+}
+
+.stat-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.75rem;
+  margin-bottom: 1.25rem;
+}
+
+.stat-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  text-align: center;
+}
+
+.stat-box .value { font-size: 1.6rem; font-weight: 700; }
+.stat-box .label { font-size: 0.8rem; color: var(--text-dim); margin-top: 0.25rem; }
+
+.chart-wrap {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1rem;
+  margin-bottom: 1rem;
+}
+
+.chart-wrap h3 { margin: 0 0 0.75rem 0; font-size: 0.95rem; }
+
+.pending-box {
+  text-align: left;
+  padding: 2rem 1rem;
+}
+
+.pending-box > p:first-child,
+.pending-box > .pill {
+  text-align: center;
+  display: block;
+}
+
+.pending-box p {
+  line-height: 1.6;
+  color: var(--text-dim);
+}
+
+.confirm-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem;
+  z-index: 100;
+}
+
+.confirm-box {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 1.25rem;
+  max-width: 22rem;
+  width: 100%;
+}
+
+.confirm-box p {
+  margin: 0 0 1rem 0;
+  line-height: 1.5;
+}

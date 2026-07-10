@@ -1,0 +1,7 @@
+node_modules/
+.claude/settings.local.json
+
+# Personal workout data — generated at runtime, not checked in
+data/current-workout.json
+data/workout-request.json
+data/workout-history.csv

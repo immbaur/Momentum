@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
+<title>Momentum</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+</head>
+<body>
+<header class="topbar">
+  <button id="back-btn" class="icon-btn" hidden>&larr;</button>
+  <h1 id="page-title">Momentum</h1>
+  <button id="unit-toggle" class="unit-toggle-btn">lb</button>
+</header>
+
+<main id="app"></main>
+
+<template id="tpl-home">
+  <div class="menu">
+    <button class="menu-btn" data-view="new-workout">
+      <span class="menu-icon">+</span>
+      <span>Create New Workout</span>
+    </button>
+    <button class="menu-btn" data-view="current-workout">
+      <span class="menu-icon">&#9654;</span>
+      <span>Open Current Workout</span>
+    </button>
+    <button class="menu-btn" data-view="history">
+      <span class="menu-icon">&#128197;</span>
+      <span>Past Workouts</span>
+    </button>
+    <button class="menu-btn" data-view="trends">
+      <span class="menu-icon">&#128200;</span>
+      <span>Trends &amp; Stats</span>
+    </button>
+  </div>
+</template>
+
+<template id="tpl-new-workout">
+  <form id="new-workout-form" class="card form">
+    <label>
+      Time available (minutes)
+      <input type="number" name="timeAvailableMinutes" min="10" max="120" step="5" placeholder="45">
+    </label>
+    <label>
+      Focus
+      <select name="focus">
+        <option value="">No preference (follow rotation)</option>
+        <option value="push">Push (chest/shoulders/triceps)</option>
+        <option value="pull">Pull (back/biceps)</option>
+        <option value="legs">Legs</option>
+        <option value="upper body">Upper body</option>
+        <option value="lower body">Lower body</option>
+        <option value="full body">Full body</option>
+      </select>
+    </label>
+    <label>
+      Notes
+      <textarea name="notes" rows="3" placeholder="e.g. hiking later today, keep it light"></textarea>
+    </label>
+    <button type="submit" class="primary-btn">Save request &amp; open workout</button>
+  </form>
+</template>
+
+<template id="tpl-current-workout">
+  <div id="current-workout-content"></div>
+</template>
+
+<template id="tpl-history">
+  <div id="history-content"></div>
+</template>
+
+<template id="tpl-trends">
+  <div id="trends-content"></div>
+</template>
+
+<script src="app.js"></script>
+</body>
+</html>
