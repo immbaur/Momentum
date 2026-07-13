@@ -9,6 +9,7 @@ const CURRENT_WORKOUT_PATH = path.join(DATA_DIR, 'current-workout.json');
 const REQUEST_PATH = path.join(DATA_DIR, 'workout-request.json');
 const HISTORY_CSV_PATH = path.join(DATA_DIR, 'workout-history.csv');
 const AGENT_PROMPT_PATH = path.join(__dirname, 'templates', 'AGENT_PROMPT.md');
+const EDIT_EXERCISE_PROMPT_PATH = path.join(__dirname, 'templates', 'EDIT_EXERCISE_PROMPT.md');
 const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
 
 const CSV_COLUMNS = [
@@ -165,6 +166,84 @@ function generateWorkout() {
   });
 }
 
+// --- Single-exercise add/swap -----------------------------------------------
+// Same idea as workout generation, but scoped to one exercise inside an
+// already in-progress workout. The workout stays fully intact (including
+// any weights/reps already logged) while a `pendingEdit` flag is set; the
+// agent removes that flag once it's done editing data/current-workout.json
+// in place. The PUT endpoint refuses to save over a file with a pending
+// edit, so the browser's autosave can't race the agent's write.
+
+let editProcess = null;
+
+function getEditExercisePromptText({ action, exerciseIndex, reason }) {
+  const raw = fs.readFileSync(EDIT_EXERCISE_PROMPT_PATH, 'utf8');
+  const marker = '\n---\n';
+  const idx = raw.indexOf(marker);
+  const text = idx === -1 ? raw : raw.slice(idx + marker.length).trim();
+  const targetLine = action === 'swap'
+    ? `Target exercise index: ${exerciseIndex} (0-based, in the current \`exercises\` array).`
+    : '';
+  return text
+    .replace('{{ACTION}}', action)
+    .replace('{{TARGET_LINE}}', targetLine)
+    .replace('{{REASON}}', reason || '(none given — use your judgement)')
+    .replace('{{EXERCISE_INDEX}}', String(exerciseIndex));
+}
+
+function runExerciseEdit({ action, exerciseIndex, reason }) {
+  const before = readJson(CURRENT_WORKOUT_PATH);
+  if (!before || before.status !== 'in_progress') {
+    return { error: 'No in-progress workout to edit.' };
+  }
+  if (editProcess) {
+    editProcess.kill('SIGTERM');
+    editProcess = null;
+  }
+
+  writeJson(CURRENT_WORKOUT_PATH, {
+    ...before,
+    pendingEdit: { action, exerciseIndex, reason: reason || '', requestedAt: new Date().toISOString() }
+  });
+
+  const promptText = getEditExercisePromptText({ action, exerciseIndex, reason });
+  const child = spawn('claude', ['-p', promptText, '--allowedTools', 'Read,Write,Edit'], {
+    cwd: __dirname
+  });
+  editProcess = child;
+
+  let stderr = '';
+  child.stderr.on('data', (chunk) => { stderr += chunk.toString(); });
+
+  const timer = setTimeout(() => child.kill('SIGTERM'), GENERATION_TIMEOUT_MS);
+
+  child.on('close', (code) => {
+    clearTimeout(timer);
+    editProcess = null;
+    const result = readJson(CURRENT_WORKOUT_PATH);
+    if (result && !result.pendingEdit) return; // agent cleared the flag itself
+    writeJson(CURRENT_WORKOUT_PATH, {
+      ...(result || before),
+      pendingEdit: undefined,
+      pendingEditError: code === 0
+        ? 'The agent finished but did not update the exercise as expected.'
+        : `Edit failed (exit code ${code}). ${stderr.slice(-500)}`
+    });
+  });
+
+  child.on('error', (err) => {
+    clearTimeout(timer);
+    editProcess = null;
+    writeJson(CURRENT_WORKOUT_PATH, {
+      ...before,
+      pendingEdit: undefined,
+      pendingEditError: `Could not start the agent: ${err.message}`
+    });
+  });
+
+  return { ok: true };
+}
+
 // --- App -------------------------------------------------------------------
 
 const app = express();
@@ -213,8 +292,42 @@ app.put('/api/current-workout', (req, res) => {
   if (!workout || workout.status !== 'in_progress') {
     return res.status(400).json({ error: 'Expected a workout with status "in_progress"' });
   }
+  const existing = readJson(CURRENT_WORKOUT_PATH);
+  if (existing && existing.pendingEdit) {
+    return res.status(409).json({ error: 'An exercise edit is in progress.' });
+  }
   writeJson(CURRENT_WORKOUT_PATH, workout);
   res.json(workout);
+});
+
+// Ask the agent to append one new exercise to the current workout.
+app.post('/api/current-workout/exercises/add', (req, res) => {
+  const result = runExerciseEdit({ action: 'add', exerciseIndex: null, reason: (req.body || {}).reason });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(readJson(CURRENT_WORKOUT_PATH));
+});
+
+// Ask the agent to replace one exercise (equipment unavailable, injury, etc.).
+app.post('/api/current-workout/exercises/:index/swap', (req, res) => {
+  const exerciseIndex = Number(req.params.index);
+  const result = runExerciseEdit({ action: 'swap', exerciseIndex, reason: (req.body || {}).reason });
+  if (result.error) return res.status(400).json({ error: result.error });
+  res.json(readJson(CURRENT_WORKOUT_PATH));
+});
+
+// Cancel an in-flight add/swap. The exercise list is untouched since the
+// agent only writes once, at the end, after removing `pendingEdit`.
+app.post('/api/current-workout/exercises/cancel-edit', (req, res) => {
+  if (editProcess) {
+    editProcess.kill('SIGTERM');
+    editProcess = null;
+  }
+  const current = readJson(CURRENT_WORKOUT_PATH);
+  if (current && current.pendingEdit) {
+    delete current.pendingEdit;
+    writeJson(CURRENT_WORKOUT_PATH, current);
+  }
+  res.json(readJson(CURRENT_WORKOUT_PATH) || { status: 'none' });
 });
 
 // Finish the current workout: log every set to the CSV datasheet, then
@@ -242,7 +355,7 @@ app.post('/api/current-workout/finish', (req, res) => {
         target_reps: exercise.targetReps || '',
         weight: set.weight != null ? set.weight : '',
         reps: set.reps != null ? set.reps : '',
-        exercise_comment: exercise.comment || '',
+        exercise_comment: exercise.note || '',
         workout_comment: workout.comment || '',
         increase_weight_next_time: exercise.increaseWeightNextTime ? 'true' : 'false'
       });
@@ -262,6 +375,10 @@ app.delete('/api/current-workout', (req, res) => {
   if (generationProcess) {
     generationProcess.kill('SIGTERM');
     generationProcess = null;
+  }
+  if (editProcess) {
+    editProcess.kill('SIGTERM');
+    editProcess = null;
   }
   if (fs.existsSync(CURRENT_WORKOUT_PATH)) fs.unlinkSync(CURRENT_WORKOUT_PATH);
   if (fs.existsSync(REQUEST_PATH)) fs.unlinkSync(REQUEST_PATH);

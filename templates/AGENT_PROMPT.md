@@ -21,8 +21,9 @@ Read these files first:
    is missing, don't ask — just assume no particular preference (full body,
    no time limit) and proceed.
 3. `data/workout-history.csv` — my full set-by-set training log, including
-   past weights, reps, and comments (`exercise_comment`, `workout_comment`
-   columns). Use the most recent 1-2 weeks to figure out
+   past weights, reps, and my own notes from the gym (`exercise_comment`,
+   `workout_comment` columns — these are things I wrote, not past AI
+   suggestions). Use the most recent 1-2 weeks to figure out
    which muscle groups are undertrained and to suggest a sensible starting
    weight per exercise (progressive overload: if all sets last time hit the
    top of the rep range, bump the weight slightly). Also check the
@@ -51,7 +52,11 @@ Then write `data/current-workout.json`, matching the schema in
   - `targetSets` / `targetReps`: from the Sets & Reps ranges (3 sets /
     6-10 reps for compounds, 2-3 sets / 10-15 reps for isolation).
   - `comment`: optional short note to help me at the gym, e.g. "last time:
-    30kg x8,8,7 — aim for 10 reps before adding weight".
+    30kg x8,8,7 — aim for 10 reps before adding weight". This is shown as
+    read-only context above the sets, not something I edit.
+  - `note`: always `""` — this is a free-text box I fill in myself at the
+    gym (not something to pre-fill), and it becomes next time's
+    `exercise_comment` in the CSV history.
   - `increaseWeightNextTime`: always `false` — this is a checkbox I tick
     myself at the gym, not something to pre-fill.
   - `sets`: pre-fill an array with `targetSets` entries, each

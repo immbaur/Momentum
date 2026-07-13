@@ -17,6 +17,7 @@
       "targetSets": 3,
       "targetReps": "6-10",
       "comment": "",
+      "note": "",
       "increaseWeightNextTime": false,
       "sets": [
         { "setNumber": 1, "weight": null, "reps": null },

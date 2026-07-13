@@ -1,7 +1,9 @@
 node_modules/
 .claude/settings.local.json
+.DS_Store
 
 # Personal workout data — generated at runtime, not checked in
 data/current-workout.json
 data/workout-request.json
 data/workout-history.csv
+workout-history-backup.csv

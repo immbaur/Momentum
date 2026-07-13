@@ -15,6 +15,7 @@ let saveTimer = null;
 let workoutState = null; // in-memory copy of the current workout while logging
 let currentView = 'home';
 let generatingPollTimer = null;
+let collapsedExercises = new Set(); // exercise names currently minimized, for overview during a workout
 
 Chart.defaults.color = '#9aa0ab';
 Chart.defaults.borderColor = '#2e333d';
@@ -128,6 +129,19 @@ async function loadCurrentWorkout() {
     return;
   }
 
+  if (workout.status === 'in_progress' && workout.pendingEdit) {
+    renderEditingExercise(container, workout);
+    generatingPollTimer = setTimeout(() => {
+      if (currentView === 'current-workout') loadCurrentWorkout();
+    }, 3000);
+    return;
+  }
+
+  if (workout.status === 'in_progress' && workout.pendingEditError) {
+    renderEditError(container, workout);
+    return;
+  }
+
   if (workout.status === 'in_progress') {
     workoutState = workout;
     renderInProgress(container, workout);
@@ -169,52 +183,116 @@ function renderGenerationError(container, workout) {
   document.getElementById('discard-pending').addEventListener('click', discardCurrentWorkout);
 }
 
+function renderEditingExercise(container, workout) {
+  const isSwap = workout.pendingEdit.action === 'swap';
+  container.innerHTML = `
+    <div class="card pending-box">
+      <p><strong>${isSwap ? 'Swapping exercise' : 'Adding exercise'}…</strong></p>
+      ${workout.pendingEdit.reason ? `<p class="exercise-meta">"${escapeHtml(workout.pendingEdit.reason)}"</p>` : ''}
+      <p>The rest of your workout is untouched — this only ${isSwap ? 'replaces the one exercise' : 'adds a new exercise'}.
+      Usually done within a minute — this page checks automatically.</p>
+      <div class="action-row">
+        <button class="danger-btn" id="cancel-edit">Cancel</button>
+      </div>
+    </div>`;
+  document.getElementById('cancel-edit').addEventListener('click', async () => {
+    await fetch('/api/current-workout/exercises/cancel-edit', { method: 'POST' });
+    navigate('current-workout');
+  });
+}
+
+function renderEditError(container, workout) {
+  container.innerHTML = `
+    <div class="card pending-box">
+      <p><strong>Exercise not changed.</strong></p>
+      <p class="exercise-meta">${escapeHtml(workout.pendingEditError || 'Unknown error.')}</p>
+      <div class="action-row">
+        <button class="secondary-btn" id="dismiss-edit-error">Dismiss</button>
+      </div>
+    </div>`;
+  document.getElementById('dismiss-edit-error').addEventListener('click', async () => {
+    delete workout.pendingEditError;
+    workoutState = workout;
+    await saveNow();
+    navigate('current-workout');
+  });
+}
+
 function renderInProgress(container, workout) {
   const prefs = workout.preferences || {};
-  const exercisesHtml = workout.exercises.map((ex, exIdx) => `
-    <div class="card exercise-card" data-ex-idx="${exIdx}">
-      <div class="exercise-header">
-        <h3>${escapeHtml(ex.name)}</h3>
-        <span class="pill">${escapeHtml(ex.muscleGroup || '')}</span>
-      </div>
+  const exercisesHtml = workout.exercises.map((ex, exIdx) => {
+    const isCollapsed = collapsedExercises.has(ex.name);
+    const sets = ex.sets || [];
+    const completedSets = sets.filter((s) => s.weight != null && s.reps != null).length;
+    const isDone = sets.length > 0 && completedSets === sets.length;
+
+    const bodyHtml = isCollapsed ? '' : `
       <div class="exercise-meta">Target: ${ex.targetSets}×${escapeHtml(ex.targetReps || '')}${ex.comment ? ` · ${escapeHtml(ex.comment)}` : ''}</div>
-      ${(ex.sets || []).map((set, setIdx) => `
+      ${sets.map((set, setIdx) => `
         <div class="set-row">
           <span class="set-label">#${set.setNumber != null ? set.setNumber : setIdx + 1}</span>
           <input type="number" inputmode="decimal" placeholder="${getUnit()}" data-field="weight" data-ex="${exIdx}" data-set="${setIdx}" value="${set.weight != null ? kgToDisplay(set.weight) : ''}">
           <input type="number" inputmode="numeric" placeholder="reps" data-field="reps" data-ex="${exIdx}" data-set="${setIdx}" value="${set.reps != null ? set.reps : ''}">
+          <button type="button" class="remove-set-btn" data-remove-set data-ex="${exIdx}" data-set="${setIdx}" ${sets.length <= 1 ? 'disabled' : ''}>&times;</button>
         </div>
       `).join('')}
-      <textarea class="exercise-comment" rows="1" placeholder="Exercise comment" data-ex-comment="${exIdx}">${escapeHtml(ex.comment || '')}</textarea>
+      <button type="button" class="add-set-btn" data-add-set="${exIdx}">+ Add set</button>
+      <textarea class="exercise-comment" rows="1" placeholder="Your notes for this exercise" data-ex-note="${exIdx}">${escapeHtml(ex.note || '')}</textarea>
       <label class="increase-weight-label">
         <input type="checkbox" data-increase-weight="${exIdx}" ${ex.increaseWeightNextTime ? 'checked' : ''}>
         Increase weight next time
       </label>
-    </div>
-  `).join('');
+      <div class="exercise-actions">
+        <button type="button" class="text-btn" data-swap-exercise="${exIdx}">Swap exercise</button>
+        <button type="button" class="text-btn danger-text-btn" data-remove-exercise="${exIdx}">Remove exercise</button>
+      </div>
+    `;
+
+    return `
+      <div class="card exercise-card" data-ex-idx="${exIdx}">
+        <div class="exercise-header" data-toggle-exercise="${escapeAttr(ex.name)}">
+          <div class="exercise-header-main">
+            <h3>${escapeHtml(ex.name)}</h3>
+            <span class="pill">${escapeHtml(ex.muscleGroup || '')}</span>
+          </div>
+          <div class="exercise-header-status">
+            <span class="completion-badge${isDone ? ' done' : ''}">${completedSets}/${sets.length}</span>
+            <span class="collapse-chevron">${isCollapsed ? '▸' : '▾'}</span>
+          </div>
+        </div>
+        ${bodyHtml}
+      </div>
+    `;
+  }).join('');
 
   if (!workout.performedAt) {
     workout.performedAt = nowLocalISO();
   }
 
+  const summaryParts = [];
+  if (prefs.focus) summaryParts.push(escapeHtml(prefs.focus));
+  if (prefs.timeAvailableMinutes) summaryParts.push(`${prefs.timeAvailableMinutes} min`);
+  const summaryPill = summaryParts.length ? `<span class="pill">${summaryParts.join(' · ')}</span>` : '';
+
   container.innerHTML = `
     <div class="workout-summary">
       <div>
         <h2>${escapeHtml(workout.title || 'Workout')}</h2>
-        <span class="pill">${escapeHtml(prefs.focus || 'no focus')} · ${prefs.timeAvailableMinutes || '?'} min</span>
+        ${summaryPill}
       </div>
     </div>
     <div class="card">
-      <label>
+      <label class="field-label">
         Performed at
         <input type="datetime-local" id="performed-at" value="${escapeAttr(workout.performedAt)}">
       </label>
     </div>
     ${exercisesHtml}
+    <button type="button" class="add-set-btn" id="add-exercise-btn">+ Add exercise</button>
     <div class="card">
-      <label>
+      <label class="field-label">
         Workout comment
-        <textarea id="workout-comment" rows="2" placeholder="How did the session feel?">${escapeHtml(workout.comment || '')}</textarea>
+        <textarea id="workout-comment" class="exercise-comment" rows="2" placeholder="How did the session feel?">${escapeHtml(workout.comment || '')}</textarea>
       </label>
     </div>
     <div class="action-row">
@@ -230,16 +308,46 @@ function renderInProgress(container, workout) {
   });
   scheduleSave(); // persist the default performedAt if it was just filled in
 
+  container.querySelectorAll('[data-toggle-exercise]').forEach((header) => {
+    header.addEventListener('click', (e) => {
+      const name = e.currentTarget.dataset.toggleExercise;
+      if (collapsedExercises.has(name)) collapsedExercises.delete(name);
+      else collapsedExercises.add(name);
+      renderInProgress(container, workoutState);
+    });
+  });
+
   container.querySelectorAll('input[data-field]').forEach((input) => {
     input.addEventListener('input', onSetFieldChange);
   });
   container.querySelectorAll('input[data-field="weight"]').forEach((input) => {
     input.addEventListener('change', onWeightCommit);
   });
-  container.querySelectorAll('textarea[data-ex-comment]').forEach((textarea) => {
+  container.querySelectorAll('textarea[data-ex-note]').forEach((textarea) => {
     textarea.addEventListener('input', (e) => {
-      workoutState.exercises[Number(e.target.dataset.exComment)].comment = e.target.value;
+      workoutState.exercises[Number(e.target.dataset.exNote)].note = e.target.value;
       scheduleSave();
+    });
+  });
+  container.querySelectorAll('[data-add-set]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const exIdx = Number(e.target.dataset.addSet);
+      const sets = workoutState.exercises[exIdx].sets;
+      sets.push({ setNumber: sets.length + 1, weight: null, reps: null });
+      scheduleSave();
+      renderInProgress(container, workoutState);
+    });
+  });
+  container.querySelectorAll('[data-remove-set]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const exIdx = Number(e.target.dataset.ex);
+      const setIdx = Number(e.target.dataset.set);
+      const sets = workoutState.exercises[exIdx].sets;
+      if (sets.length <= 1) return;
+      sets.splice(setIdx, 1);
+      sets.forEach((s, i) => { s.setNumber = i + 1; });
+      scheduleSave();
+      renderInProgress(container, workoutState);
     });
   });
   container.querySelectorAll('input[data-increase-weight]').forEach((checkbox) => {
@@ -254,6 +362,52 @@ function renderInProgress(container, workout) {
   });
   document.getElementById('finish-workout').addEventListener('click', finishWorkout);
   document.getElementById('discard-workout').addEventListener('click', discardCurrentWorkout);
+  document.getElementById('add-exercise-btn').addEventListener('click', addExercise);
+  container.querySelectorAll('[data-swap-exercise]').forEach((btn) => {
+    btn.addEventListener('click', (e) => swapExercise(Number(e.target.dataset.swapExercise)));
+  });
+  container.querySelectorAll('[data-remove-exercise]').forEach((btn) => {
+    btn.addEventListener('click', (e) => removeExercise(container, Number(e.target.dataset.removeExercise)));
+  });
+}
+
+async function addExercise() {
+  const reason = await promptForText(
+    'Add an exercise. Any reason or preference? (optional)',
+    'e.g. add more core work, no barbell available'
+  );
+  if (reason === null) return;
+  await flushSave();
+  await fetch('/api/current-workout/exercises/add', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason })
+  });
+  navigate('current-workout');
+}
+
+async function swapExercise(exIdx) {
+  const exName = workoutState.exercises[exIdx].name;
+  const reason = await promptForText(
+    `Swap "${exName}" for something else. Why?`,
+    'e.g. no cable machine available, shoulder pain'
+  );
+  if (reason === null) return;
+  await flushSave();
+  await fetch(`/api/current-workout/exercises/${exIdx}/swap`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ reason })
+  });
+  navigate('current-workout');
+}
+
+async function removeExercise(container, exIdx) {
+  const exName = workoutState.exercises[exIdx].name;
+  if (!(await showConfirm(`Remove "${exName}" from this workout?`))) return;
+  workoutState.exercises.splice(exIdx, 1);
+  scheduleSave();
+  renderInProgress(container, workoutState);
 }
 
 function onSetFieldChange(e) {
@@ -298,13 +452,26 @@ function scheduleSave() {
   if (status) status.textContent = 'Saving…';
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async () => {
-    await fetch('/api/current-workout', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(workoutState)
-    });
+    await saveNow();
     if (status) status.textContent = 'Saved';
   }, 500);
+}
+
+function saveNow() {
+  return fetch('/api/current-workout', {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(workoutState)
+  });
+}
+
+// Writes the in-memory workout to disk right now, bypassing the debounce.
+// Used before handing the file off to an agent (add/swap exercise) so it
+// reads fresh data instead of racing the next scheduled autosave.
+async function flushSave() {
+  clearTimeout(saveTimer);
+  saveTimer = null;
+  await saveNow();
 }
 
 async function finishWorkout() {
@@ -348,6 +515,31 @@ function showConfirm(message) {
   });
 }
 
+// Resolves to the trimmed text on "Continue", or null on "Cancel".
+function promptForText(message, placeholder) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <p>${escapeHtml(message)}</p>
+        <textarea id="prompt-input" rows="2" placeholder="${escapeAttr(placeholder || '')}"></textarea>
+        <div class="action-row" style="margin-top:0.75rem;">
+          <button class="secondary-btn" data-choice="cancel">Cancel</button>
+          <button class="primary-btn" data-choice="ok">Continue</button>
+        </div>
+      </div>`;
+    overlay.addEventListener('click', (e) => {
+      const choice = e.target.dataset.choice;
+      if (!choice) return;
+      const value = overlay.querySelector('#prompt-input').value.trim();
+      overlay.remove();
+      resolve(choice === 'ok' ? value : null);
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
 // --- History -------------------------------------------------------------
 
 async function loadHistory() {
@@ -363,7 +555,7 @@ async function loadHistory() {
 
   container.innerHTML = `<div class="card" style="padding:0;">` + workouts.map((w) => `
     <details class="history-item">
-      <summary><span>${escapeHtml(w.title || 'Workout')} — ${escapeHtml(formatDateTime(w.date))}</span><span class="pill">${escapeHtml(w.focus || '')}</span></summary>
+      <summary><span>${escapeHtml(w.title || 'Workout')} — ${escapeHtml(formatDateTime(w.date))}</span>${w.focus ? `<span class="pill">${escapeHtml(w.focus)}</span>` : ''}</summary>
       ${w.exercises.map((ex) => `
         <div class="history-exercise">
           <strong>${escapeHtml(ex.name)}</strong>
