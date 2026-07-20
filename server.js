@@ -8,9 +8,14 @@ const DATA_DIR = path.join(__dirname, 'data');
 const CURRENT_WORKOUT_PATH = path.join(DATA_DIR, 'current-workout.json');
 const REQUEST_PATH = path.join(DATA_DIR, 'workout-request.json');
 const HISTORY_CSV_PATH = path.join(DATA_DIR, 'workout-history.csv');
+const HISTORY_RECENT_CSV_PATH = path.join(DATA_DIR, 'workout-history-recent.csv');
 const AGENT_PROMPT_PATH = path.join(__dirname, 'templates', 'AGENT_PROMPT.md');
 const EDIT_EXERCISE_PROMPT_PATH = path.join(__dirname, 'templates', 'EDIT_EXERCISE_PROMPT.md');
 const GENERATION_TIMEOUT_MS = 5 * 60 * 1000;
+// How many of the most recent workout sessions the agent gets to see. Covers
+// roughly 2 weeks at the plan's ~4 workouts/week and at least two full turns
+// through the A/B/C/D rotation, even with irregular gaps between sessions.
+const RECENT_WORKOUT_COUNT = 10;
 
 const CSV_COLUMNS = [
   'date', 'workout_id', 'workout_title', 'focus', 'muscle_group',
@@ -89,6 +94,27 @@ function appendHistoryRows(rows) {
   fs.appendFileSync(HISTORY_CSV_PATH, csvText);
 }
 
+// Writes a copy of the history CSV containing only the most recent
+// RECENT_WORKOUT_COUNT workout sessions, for the generation agent to read
+// instead of the full (ever-growing) log. Rows are assumed to already be in
+// chronological order, since appendHistoryRows() only ever adds to the end.
+function writeRecentHistoryCsv() {
+  const rows = readHistoryRows();
+  const idsInOrder = [];
+  const seen = new Set();
+  rows.forEach((row) => {
+    const id = row.workout_id || row.date;
+    if (!seen.has(id)) {
+      seen.add(id);
+      idsInOrder.push(id);
+    }
+  });
+  const recentIds = new Set(idsInOrder.slice(-RECENT_WORKOUT_COUNT));
+  const recentRows = rows.filter((row) => recentIds.has(row.workout_id || row.date));
+  const csvText = CSV_COLUMNS.join(',') + '\n' + recentRows.map(csvRow).join('');
+  fs.writeFileSync(HISTORY_RECENT_CSV_PATH, csvText);
+}
+
 // --- JSON file helpers ----------------------------------------------------
 
 function readJson(filePath) {
@@ -106,8 +132,9 @@ function writeJson(filePath, data) {
 
 // --- Workout generation ----------------------------------------------------
 // Runs templates/AGENT_PROMPT.md through the Claude Code CLI (non-interactive,
-// scoped to Read/Write only) so it can read workoutplan.md, the CSV history,
-// and workout-request.json, then write data/current-workout.json itself.
+// scoped to Read/Write only) so it can read templates/exercise-library.json,
+// the trimmed recent-history CSV (see writeRecentHistoryCsv), and
+// workout-request.json, then write data/current-workout.json itself.
 
 let generationProcess = null;
 
@@ -130,8 +157,9 @@ function generateWorkout() {
     requestedAt: new Date().toISOString(),
     preferences
   });
+  writeRecentHistoryCsv();
 
-  const child = spawn('claude', ['-p', getAgentPromptText(), '--allowedTools', 'Read,Write'], {
+  const child = spawn('claude', ['-p', getAgentPromptText(), '--allowedTools', 'Read,Write,Bash', '--model', 'sonnet'], {
     cwd: __dirname
   });
   generationProcess = child;
@@ -205,9 +233,10 @@ function runExerciseEdit({ action, exerciseIndex, reason }) {
     ...before,
     pendingEdit: { action, exerciseIndex, reason: reason || '', requestedAt: new Date().toISOString() }
   });
+  writeRecentHistoryCsv();
 
   const promptText = getEditExercisePromptText({ action, exerciseIndex, reason });
-  const child = spawn('claude', ['-p', promptText, '--allowedTools', 'Read,Write,Edit'], {
+  const child = spawn('claude', ['-p', promptText, '--allowedTools', 'Read,Write,Edit,Bash', '--model', 'sonnet'], {
     cwd: __dirname
   });
   editProcess = child;

@@ -43,6 +43,14 @@ Purpose:
 
 # Exercise Library
 
+> The workout-generation agent reads a compact JSON mirror of this section
+> (plus Exercises to Avoid, Sets & Reps, Weekly Training Volume, and the
+> four Weekly Schedule example workouts) at
+> `templates/exercise-library.json` instead of parsing this markdown. If you
+> add/remove/rename an exercise, change its muscle group, adjust a rep
+> range, or rebalance the weekly volume targets/example workouts below,
+> update that file too.
+
 ## Chest
 
 - Dumbbell Bench Press

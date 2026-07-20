@@ -6,4 +6,5 @@ node_modules/
 data/current-workout.json
 data/workout-request.json
 data/workout-history.csv
+data/workout-history-recent.csv
 workout-history-backup.csv

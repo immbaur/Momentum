@@ -1,0 +1,74 @@
+{
+  "_comment": "Machine-readable mirror of workoutplan.md's Exercise Library / Exercises to Avoid / Sets & Reps / Weekly Training Volume / Weekly Schedule sections. Keep both in sync when editing.",
+  "setsPerExercise": 3,
+  "avoid": [
+    "Barbell Squat",
+    "Conventional Deadlift",
+    "Barbell Bench Press",
+    "Barbell Overhead Press"
+  ],
+  "weeklyVolumeTargets": {
+    "_comment": "Target working sets per muscle group per week (66 total), at the 3-set-per-exercise cap.",
+    "Chest": 9,
+    "Back (Width)": 6,
+    "Back (Thickness)": 6,
+    "Shoulders": 9,
+    "Biceps": 6,
+    "Triceps": 6,
+    "Quads": 9,
+    "Hamstrings": 6,
+    "Lower Back": 3,
+    "Core": 6
+  },
+  "exampleWorkouts": [
+    {
+      "title": "Push",
+      "exercises": ["Dumbbell Bench Press", "Incline Dumbbell Bench Press", "Dumbbell Overhead Press", "Dumbbell/Cable Lateral Raise", "Rope Pushdown"]
+    },
+    {
+      "title": "Pull",
+      "exercises": ["Lat Pulldown", "Seated Cable Row", "Reverse Pec Deck", "Dumbbell Curl", "Hanging Leg Raise"]
+    },
+    {
+      "title": "Legs",
+      "exercises": ["Leg Press", "Leg Extension", "Seated Leg Curl", "Romanian Deadlift (Dumbbells)", "Back Extension", "Cable Crunch"]
+    },
+    {
+      "title": "Upper Mix + Quad Finisher",
+      "exercises": ["Pull-ups (or Assisted Pull-ups)", "Chest-Supported Row", "Pec Deck", "Hammer Curl", "Overhead Cable Extension", "Dumbbell Bulgarian Split Squat"]
+    }
+  ],
+  "exercises": [
+    { "name": "Dumbbell Bench Press", "muscleGroup": "Chest", "type": "compound", "targetReps": "6-10" },
+    { "name": "Incline Dumbbell Bench Press", "muscleGroup": "Chest", "type": "compound", "targetReps": "6-10" },
+    { "name": "Pec Deck", "muscleGroup": "Chest", "type": "isolation", "targetReps": "10-15" },
+
+    { "name": "Pull-ups (or Assisted Pull-ups)", "muscleGroup": "Back (Width)", "type": "compound", "targetReps": "6-10" },
+    { "name": "Lat Pulldown", "muscleGroup": "Back (Width)", "type": "compound", "targetReps": "6-10" },
+
+    { "name": "Seated Cable Row", "muscleGroup": "Back (Thickness)", "type": "compound", "targetReps": "6-10" },
+    { "name": "Chest-Supported Row", "muscleGroup": "Back (Thickness)", "type": "compound", "targetReps": "6-10" },
+
+    { "name": "Dumbbell Overhead Press", "muscleGroup": "Shoulders", "type": "compound", "targetReps": "6-10" },
+    { "name": "Dumbbell/Cable Lateral Raise", "muscleGroup": "Shoulders", "type": "isolation", "targetReps": "10-15" },
+    { "name": "Reverse Pec Deck", "muscleGroup": "Shoulders", "type": "isolation", "targetReps": "10-15" },
+
+    { "name": "Dumbbell Curl", "muscleGroup": "Biceps", "type": "isolation", "targetReps": "10-15" },
+    { "name": "Hammer Curl", "muscleGroup": "Biceps", "type": "isolation", "targetReps": "10-15" },
+
+    { "name": "Rope Pushdown", "muscleGroup": "Triceps", "type": "isolation", "targetReps": "10-15" },
+    { "name": "Overhead Cable Extension", "muscleGroup": "Triceps", "type": "isolation", "targetReps": "10-15" },
+
+    { "name": "Leg Press", "muscleGroup": "Quads", "type": "compound", "targetReps": "8-12" },
+    { "name": "Leg Extension", "muscleGroup": "Quads", "type": "isolation", "targetReps": "10-15" },
+    { "name": "Dumbbell Bulgarian Split Squat", "muscleGroup": "Quads", "type": "compound", "targetReps": "10-15" },
+
+    { "name": "Seated Leg Curl", "muscleGroup": "Hamstrings", "type": "isolation", "targetReps": "10-15" },
+    { "name": "Romanian Deadlift (Dumbbells)", "muscleGroup": "Hamstrings", "type": "compound", "targetReps": "8-12" },
+
+    { "name": "Back Extension", "muscleGroup": "Lower Back", "type": "isolation", "targetReps": "12-15" },
+
+    { "name": "Hanging Leg Raise", "muscleGroup": "Core", "type": "isolation", "targetReps": "10-15" },
+    { "name": "Cable Crunch", "muscleGroup": "Core", "type": "isolation", "targetReps": "10-15" }
+  ]
+}
