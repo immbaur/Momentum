@@ -14,11 +14,30 @@ can use it from your phone.
 PORT=3001 ./start.sh
 ```
 
-This installs dependencies on first run, starts the server, then prints a
+This installs dependencies on first run, starts the server, waits until it
+actually answers on the port, then prints a
 `https://xxxxx.trycloudflare.com` URL a few seconds later — that's your
 public link for the session. Leave the terminal open; closing it (or
 Ctrl+C) stops both the server and the tunnel. The URL changes every time you
 restart.
+
+## Password / login
+
+The app is public through the tunnel, so every `/api` route requires a
+login. On first start the server generates a password and prints it to the
+terminal; enter it on the landing page. To pick your own instead:
+
+```bash
+MOMENTUM_PASSWORD=your-password PORT=3001 ./start.sh
+```
+
+Notes:
+
+- The password hash lives in `data/auth.json` (delete it to regenerate a
+  random password on next start).
+- Changing `MOMENTUM_PASSWORD` invalidates all existing sessions.
+- Sessions are cookies that last 30 days (`data/sessions.json`), so you
+  won't retype the password every gym visit.
 
 **Why `PORT=3001`**: plain `./start.sh` defaults to port 3000. If something
 else on your machine is already using that port, override it with `PORT=`.
@@ -53,6 +72,18 @@ PORT=3001 ./start.sh
 See [`templates/AGENT_PROMPT.md`](templates/AGENT_PROMPT.md) and
 [`templates/EDIT_EXERCISE_PROMPT.md`](templates/EDIT_EXERCISE_PROMPT.md) for
 exactly what the agent is told.
+
+Agent runs are sandboxed: no Bash, and each run gets a throwaway workspace
+under `data/agent-workspace/` containing copies of only the files it needs.
+The server schema-validates whatever the agent wrote before publishing it
+to `data/current-workout.json`, and validates every browser payload the
+same way before saving or logging it.
+
+## Tests
+
+```bash
+npm test
+```
 
 ## Data
 

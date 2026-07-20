@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1">
 <title>Momentum</title>
 <link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4"></script>
+<script src="vendor/chart.umd.js"></script>
 </head>
 <body>
 <header class="topbar">
@@ -15,6 +15,24 @@
 </header>
 
 <main id="app"></main>
+
+<template id="tpl-login">
+  <div class="login-landing">
+    <div class="login-hero">
+      <div class="login-logo">&#9889;</div>
+      <h2>Momentum</h2>
+      <p class="exercise-meta">Your personal workout dashboard.</p>
+    </div>
+    <form id="login-form" class="card form">
+      <label>
+        Password
+        <input type="password" name="password" autocomplete="current-password" required autofocus>
+      </label>
+      <p id="login-error" class="login-error" hidden></p>
+      <button type="submit" class="primary-btn">Sign in</button>
+    </form>
+  </div>
+</template>
 
 <template id="tpl-home">
   <div class="menu">

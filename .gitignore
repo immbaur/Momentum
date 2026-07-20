@@ -8,3 +8,6 @@ data/workout-request.json
 data/workout-history.csv
 data/workout-history-recent.csv
 workout-history-backup.csv
+data/auth.json
+data/sessions.json
+data/agent-workspace/

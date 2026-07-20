@@ -4,6 +4,7 @@ const backBtn = document.getElementById('back-btn');
 const unitToggleBtn = document.getElementById('unit-toggle');
 
 const TITLES = {
+  login: 'Momentum',
   home: 'Momentum',
   'new-workout': 'New Workout',
   'current-workout': 'Current Workout',
@@ -12,6 +13,7 @@ const TITLES = {
 };
 
 let saveTimer = null;
+let retrySaveTimer = null;
 let workoutState = null; // in-memory copy of the current workout while logging
 let currentView = 'home';
 let generatingPollTimer = null;
@@ -34,16 +36,75 @@ function navigate(view) {
   clearTimeout(generatingPollTimer);
   generatingPollTimer = null;
   pageTitle.textContent = TITLES[view] || 'Momentum';
-  backBtn.hidden = view === 'home';
+  backBtn.hidden = view === 'home' || view === 'login';
+  unitToggleBtn.hidden = view === 'login';
   app.innerHTML = '';
   const tpl = document.getElementById(`tpl-${view}`);
   app.appendChild(tpl.content.cloneNode(true));
 
+  if (view === 'login') wireLogin();
   if (view === 'home') wireHome();
   if (view === 'new-workout') wireNewWorkout();
   if (view === 'current-workout') loadCurrentWorkout();
   if (view === 'history') loadHistory();
   if (view === 'trends') loadTrends();
+}
+
+// --- API helper --------------------------------------------------------
+// fetch wrapper that surfaces failures instead of ignoring them: throws an
+// Error with `.status` set, and bounces to the login page on 401.
+
+async function api(path, options) {
+  let res;
+  try {
+    res = await fetch(path, options);
+  } catch (networkErr) {
+    const err = new Error('Network error — check your connection.');
+    err.status = 0;
+    throw err;
+  }
+  if (res.status === 401) {
+    navigate('login');
+    const err = new Error('Signed out.');
+    err.status = 401;
+    throw err;
+  }
+  if (!res.ok) {
+    let message = `Request failed (${res.status}).`;
+    try {
+      const body = await res.json();
+      if (body && body.error) message = body.error;
+    } catch (ignored) { /* non-JSON error body */ }
+    const err = new Error(message);
+    err.status = res.status;
+    throw err;
+  }
+  return res.json();
+}
+
+// --- Login ---------------------------------------------------------------
+
+function wireLogin() {
+  const form = document.getElementById('login-form');
+  const errorEl = document.getElementById('login-error');
+  form.addEventListener('submit', async (e) => {
+    e.preventDefault();
+    errorEl.hidden = true;
+    const button = form.querySelector('button');
+    button.disabled = true;
+    try {
+      await api('/api/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: new FormData(form).get('password') })
+      });
+      navigate('home');
+    } catch (err) {
+      errorEl.textContent = err.status === 401 ? 'Wrong password.' : err.message;
+      errorEl.hidden = false;
+      button.disabled = false;
+    }
+  });
 }
 
 // --- Weight units ------------------------------------------------------
@@ -90,12 +151,19 @@ function wireNewWorkout() {
     if (data.timeAvailableMinutes) {
       data.timeAvailableMinutes = Number(data.timeAvailableMinutes);
     }
-    await fetch('/api/workout-request', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data)
-    });
-    navigate('current-workout');
+    const button = form.querySelector('button[type="submit"]');
+    button.disabled = true;
+    try {
+      await api('/api/workout-request', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(data)
+      });
+      navigate('current-workout');
+    } catch (err) {
+      button.disabled = false;
+      if (err.status !== 401) await showMessage(`Could not start the workout: ${err.message}`);
+    }
   });
 }
 
@@ -104,8 +172,15 @@ function wireNewWorkout() {
 async function loadCurrentWorkout() {
   const container = document.getElementById('current-workout-content');
   container.innerHTML = '<p class="empty-state">Loading…</p>';
-  const res = await fetch('/api/current-workout');
-  const workout = await res.json();
+  let workout;
+  try {
+    workout = await api('/api/current-workout');
+  } catch (err) {
+    if (err.status === 401) return;
+    container.innerHTML = `<p class="empty-state">Could not load the workout: ${escapeHtml(err.message)}<br><br><button class="secondary-btn" id="reload-current">Retry</button></p>`;
+    document.getElementById('reload-current').addEventListener('click', () => loadCurrentWorkout());
+    return;
+  }
 
   if (workout.status === 'none' || !workout.status) {
     container.innerHTML = `
@@ -177,8 +252,12 @@ function renderGenerationError(container, workout) {
       </div>
     </div>`;
   document.getElementById('retry-generation').addEventListener('click', async () => {
-    await fetch('/api/current-workout/retry', { method: 'POST' });
-    navigate('current-workout');
+    try {
+      await api('/api/current-workout/retry', { method: 'POST' });
+      navigate('current-workout');
+    } catch (err) {
+      if (err.status !== 401) await showMessage(`Could not retry: ${err.message}`);
+    }
   });
   document.getElementById('discard-pending').addEventListener('click', discardCurrentWorkout);
 }
@@ -196,8 +275,12 @@ function renderEditingExercise(container, workout) {
       </div>
     </div>`;
   document.getElementById('cancel-edit').addEventListener('click', async () => {
-    await fetch('/api/current-workout/exercises/cancel-edit', { method: 'POST' });
-    navigate('current-workout');
+    try {
+      await api('/api/current-workout/exercises/cancel-edit', { method: 'POST' });
+      navigate('current-workout');
+    } catch (err) {
+      if (err.status !== 401) await showMessage(`Could not cancel: ${err.message}`);
+    }
   });
 }
 
@@ -211,6 +294,8 @@ function renderEditError(container, workout) {
       </div>
     </div>`;
   document.getElementById('dismiss-edit-error').addEventListener('click', async () => {
+    // The server drops pendingEditError on the next save (unknown fields
+    // never round-trip), so saving the workout as-is dismisses it.
     delete workout.pendingEditError;
     workoutState = workout;
     await saveNow();
@@ -377,13 +462,17 @@ async function addExercise() {
     'e.g. add more core work, no barbell available'
   );
   if (reason === null) return;
-  await flushSave();
-  await fetch('/api/current-workout/exercises/add', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason })
-  });
-  navigate('current-workout');
+  try {
+    await flushSave();
+    await api('/api/current-workout/exercises/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    navigate('current-workout');
+  } catch (err) {
+    if (err.status !== 401) await showMessage(`Could not add an exercise: ${err.message}`);
+  }
 }
 
 async function swapExercise(exIdx) {
@@ -393,13 +482,17 @@ async function swapExercise(exIdx) {
     'e.g. no cable machine available, shoulder pain'
   );
   if (reason === null) return;
-  await flushSave();
-  await fetch(`/api/current-workout/exercises/${exIdx}/swap`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ reason })
-  });
-  navigate('current-workout');
+  try {
+    await flushSave();
+    await api(`/api/current-workout/exercises/${exIdx}/swap`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reason })
+    });
+    navigate('current-workout');
+  } catch (err) {
+    if (err.status !== 401) await showMessage(`Could not swap the exercise: ${err.message}`);
+  }
 }
 
 async function removeExercise(container, exIdx) {
@@ -447,27 +540,52 @@ function onWeightCommit(e) {
   scheduleSave();
 }
 
-function scheduleSave() {
-  const status = document.getElementById('save-status');
-  if (status) status.textContent = 'Saving…';
-  clearTimeout(saveTimer);
-  saveTimer = setTimeout(async () => {
-    await saveNow();
-    if (status) status.textContent = 'Saved';
-  }, 500);
+// --- Saving ----------------------------------------------------------------
+// Autosaves are debounced, checked for success, and retried on transient
+// failures. A 409 means the server has newer state (another tab or an agent
+// edit finished) — reload it instead of overwriting.
+
+function setSaveStatus(text) {
+  const el = document.getElementById('save-status');
+  if (el) el.textContent = text;
 }
 
-function saveNow() {
-  return fetch('/api/current-workout', {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(workoutState)
-  });
+function scheduleSave() {
+  setSaveStatus('Saving…');
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => { saveNow(); }, 500);
+}
+
+async function saveNow() {
+  if (!workoutState) return;
+  clearTimeout(retrySaveTimer);
+  try {
+    const saved = await api('/api/current-workout', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workoutState)
+    });
+    if (workoutState) workoutState.rev = saved.rev;
+    setSaveStatus('Saved');
+  } catch (err) {
+    if (err.status === 401) return;
+    if (err.status === 409) {
+      setSaveStatus('Reloading latest version…');
+      if (currentView === 'current-workout') navigate('current-workout');
+      return;
+    }
+    if (err.status === 400) {
+      setSaveStatus(`Not saved: ${err.message}`);
+      return;
+    }
+    setSaveStatus('Save failed — retrying…');
+    retrySaveTimer = setTimeout(saveNow, 3000);
+  }
 }
 
 // Writes the in-memory workout to disk right now, bypassing the debounce.
-// Used before handing the file off to an agent (add/swap exercise) so it
-// reads fresh data instead of racing the next scheduled autosave.
+// Used before handing off to an agent (add/swap exercise) so it reads fresh
+// data instead of racing the next scheduled autosave.
 async function flushSave() {
   clearTimeout(saveTimer);
   saveTimer = null;
@@ -476,21 +594,41 @@ async function flushSave() {
 
 async function finishWorkout() {
   if (!(await showConfirm('Finish this workout and save it to your history?'))) return;
-  workoutState.status = 'completed';
-  await fetch('/api/current-workout/finish', {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(workoutState)
-  });
-  workoutState = null;
-  navigate('home');
+  const btn = document.getElementById('finish-workout');
+  if (btn) btn.disabled = true;
+  clearTimeout(saveTimer);
+  clearTimeout(retrySaveTimer);
+  try {
+    await api('/api/current-workout/finish', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(workoutState)
+    });
+    workoutState = null;
+    navigate('home');
+  } catch (err) {
+    if (btn) btn.disabled = false;
+    if (err.status === 401) return;
+    if (err.status === 409) {
+      await showMessage(`Could not finish: ${err.message}`);
+      navigate('current-workout');
+      return;
+    }
+    await showMessage(`Could not save the workout: ${err.message} Nothing was lost — try again.`);
+  }
 }
 
 async function discardCurrentWorkout() {
   if (!(await showConfirm('Discard this workout? Nothing will be saved.'))) return;
-  await fetch('/api/current-workout', { method: 'DELETE' });
-  workoutState = null;
-  navigate('home');
+  clearTimeout(saveTimer);
+  clearTimeout(retrySaveTimer);
+  try {
+    await api('/api/current-workout', { method: 'DELETE' });
+    workoutState = null;
+    navigate('home');
+  } catch (err) {
+    if (err.status !== 401) await showMessage(`Could not discard: ${err.message}`);
+  }
 }
 
 function showConfirm(message) {
@@ -510,6 +648,27 @@ function showConfirm(message) {
       if (!choice) return;
       overlay.remove();
       resolve(choice === 'ok');
+    });
+    document.body.appendChild(overlay);
+  });
+}
+
+// One-button informational dialog (errors, notices).
+function showMessage(message) {
+  return new Promise((resolve) => {
+    const overlay = document.createElement('div');
+    overlay.className = 'confirm-overlay';
+    overlay.innerHTML = `
+      <div class="confirm-box">
+        <p>${escapeHtml(message)}</p>
+        <div class="action-row" style="grid-template-columns:1fr;">
+          <button class="primary-btn" data-choice="ok">OK</button>
+        </div>
+      </div>`;
+    overlay.addEventListener('click', (e) => {
+      if (!e.target.dataset.choice) return;
+      overlay.remove();
+      resolve();
     });
     document.body.appendChild(overlay);
   });
@@ -545,8 +704,14 @@ function promptForText(message, placeholder) {
 async function loadHistory() {
   const container = document.getElementById('history-content');
   container.innerHTML = '<p class="empty-state">Loading…</p>';
-  const res = await fetch('/api/history');
-  const workouts = await res.json();
+  let workouts;
+  try {
+    workouts = await api('/api/history');
+  } catch (err) {
+    if (err.status === 401) return;
+    container.innerHTML = `<p class="empty-state">Could not load history: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
 
   if (!workouts.length) {
     container.innerHTML = '<p class="empty-state">No completed workouts yet.</p>';
@@ -575,8 +740,14 @@ async function loadHistory() {
 async function loadTrends() {
   const container = document.getElementById('trends-content');
   container.innerHTML = '<p class="empty-state">Loading…</p>';
-  const res = await fetch('/api/stats');
-  const stats = await res.json();
+  let stats;
+  try {
+    stats = await api('/api/stats');
+  } catch (err) {
+    if (err.status === 401) return;
+    container.innerHTML = `<p class="empty-state">Could not load stats: ${escapeHtml(err.message)}</p>`;
+    return;
+  }
 
   if (!stats.totalWorkouts) {
     container.innerHTML = '<p class="empty-state">No data yet. Finish a workout to see trends.</p>';
@@ -673,4 +844,14 @@ function formatDateTime(str) {
   });
 }
 
-navigate('home');
+// --- Startup: show the app if a session exists, otherwise the landing page.
+
+(async () => {
+  try {
+    const res = await fetch('/api/auth/status');
+    const status = await res.json();
+    navigate(status.authenticated ? 'home' : 'login');
+  } catch (err) {
+    navigate('login');
+  }
+})();
