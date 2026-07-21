@@ -21,6 +21,15 @@ public link for the session. Leave the terminal open; closing it (or
 Ctrl+C) stops both the server and the tunnel. The URL changes every time you
 restart.
 
+## Hosting it permanently (DigitalOcean)
+
+The tunnel is fine for session-by-session use, but the URL changes every
+restart and your laptop has to stay awake. To run it 24/7 with a stable
+HTTPS URL, deploy it to a DigitalOcean droplet — it can share an existing
+droplet (e.g. one already serving a static site via Caddy) on its own
+subdomain, without disturbing what's there. See
+[`deploy/DIGITALOCEAN.md`](deploy/DIGITALOCEAN.md).
+
 ## Password / login
 
 The app is public through the tunnel, so every `/api` route requires a

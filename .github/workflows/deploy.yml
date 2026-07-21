@@ -1,0 +1,69 @@
+name: Deploy Momentum
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+# Never let two deploys overlap; a newer push supersedes an in-flight one.
+concurrency:
+  group: deploy-momentum
+  cancel-in-progress: true
+
+jobs:
+  deploy:
+    name: Deploy to droplet
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v5
+
+      - name: Configure SSH
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_SSH_KEY: ${{ secrets.DROPLET_SSH_KEY }}
+        run: |
+          mkdir -p ~/.ssh
+          chmod 700 ~/.ssh
+          printf '%s\n' "$DROPLET_SSH_KEY" > ~/.ssh/deploy_key
+          chmod 600 ~/.ssh/deploy_key
+          ssh-keyscan -H "$DROPLET_HOST" >> ~/.ssh/known_hosts
+
+      # Write the app's runtime secrets to /etc/momentum.env on the droplet.
+      # The file is piped over stdin (not passed as arguments) so secret
+      # values never appear in any process listing. This makes GitHub the
+      # single source of truth for the password and Claude auth.
+      - name: Sync secrets to /etc/momentum.env
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+          MOMENTUM_PASSWORD: ${{ secrets.MOMENTUM_PASSWORD }}
+          CLAUDE_CODE_OAUTH_TOKEN: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+        run: |
+          if [ -z "$MOMENTUM_PASSWORD" ]; then
+            echo "::error::MOMENTUM_PASSWORD secret is not set"; exit 1
+          fi
+          if [ -z "$CLAUDE_CODE_OAUTH_TOKEN" ] && [ -z "$ANTHROPIC_API_KEY" ]; then
+            echo "::error::Set either CLAUDE_CODE_OAUTH_TOKEN or ANTHROPIC_API_KEY secret"; exit 1
+          fi
+          umask 077
+          {
+            printf 'MOMENTUM_PASSWORD=%s\n' "$MOMENTUM_PASSWORD"
+            [ -n "$CLAUDE_CODE_OAUTH_TOKEN" ] && printf 'CLAUDE_CODE_OAUTH_TOKEN=%s\n' "$CLAUDE_CODE_OAUTH_TOKEN"
+            [ -n "$ANTHROPIC_API_KEY" ] && printf 'ANTHROPIC_API_KEY=%s\n' "$ANTHROPIC_API_KEY"
+          } > momentum.env
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$DROPLET_USER@$DROPLET_HOST" \
+            'umask 077 && cat > /etc/momentum.env && chown root:root /etc/momentum.env && chmod 600 /etc/momentum.env' \
+            < momentum.env
+          rm -f momentum.env
+
+      - name: Deploy code and restart service
+        env:
+          DROPLET_HOST: ${{ secrets.DROPLET_HOST }}
+          DROPLET_USER: ${{ secrets.DROPLET_USER }}
+        run: |
+          ssh -i ~/.ssh/deploy_key -o IdentitiesOnly=yes "$DROPLET_USER@$DROPLET_HOST" \
+            'bash -s' < deploy/remote-deploy.sh

@@ -1,0 +1,15 @@
+# Momentum site block — APPEND this to the droplet's existing
+# /etc/caddy/Caddyfile (do NOT replace the file; the landing-page blocks
+# must stay). Caddy serves multiple sites from one Caddyfile.
+#
+#   sudo sh -c 'cat /home/momentum/Momentum/deploy/momentum.caddy >> /etc/caddy/Caddyfile'
+#   sudo caddy validate --config /etc/caddy/Caddyfile
+#   sudo systemctl reload caddy
+#
+# Requires a DNS record for momentum.heyimmi.com pointing at the droplet
+# (see DIGITALOCEAN.md, step 1). Caddy fetches the Let's Encrypt cert on the
+# first request; the /.well-known/acme-challenge path is exempt from
+# Cloudflare's HTTPS redirect, so HTTP-01 works even while proxied.
+momentum.heyimmi.com {
+	reverse_proxy 127.0.0.1:3000
+}

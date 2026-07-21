@@ -927,7 +927,11 @@ function isoWeekKey(dateStr) {
 
 if (require.main === module) {
   initAuth();
-  app.listen(PORT, () => {
+  // HOST=127.0.0.1 keeps the app reachable only through a local reverse
+  // proxy (e.g. Caddy on a droplet); unset, it listens on all interfaces
+  // as before for local/tunnel use.
+  const HOST = process.env.HOST || '0.0.0.0';
+  app.listen(PORT, HOST, () => {
     console.log(`Momentum dashboard running at http://localhost:${PORT}`);
   });
 }
