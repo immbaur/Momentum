@@ -136,6 +136,20 @@ function appendHistoryRows(rows) {
   fs.appendFileSync(HISTORY_CSV_PATH, csvText);
 }
 
+// Overwrites the whole CSV with the given rows (header + one line per row).
+// Used to edit a past workout in place, unlike appendHistoryRows() which
+// only ever adds to the end.
+function writeHistoryRows(rows) {
+  fs.writeFileSync(HISTORY_CSV_PATH, CSV_COLUMNS.join(',') + '\n' + rows.map(csvRow).join(''));
+}
+
+// The id /api/history groups rows by: the workout_id column if present,
+// else a date+title fallback for older rows written before that column
+// existed. Shared with the history-edit endpoint so both agree on identity.
+function historyWorkoutId(row) {
+  return row.workout_id || `${row.date}-${row.workout_title}`;
+}
+
 // Returns a copy of the history CSV containing only the most recent
 // RECENT_WORKOUT_COUNT workout sessions, for the generation agent to read
 // instead of the full (ever-growing) log. Rows are assumed to already be in
@@ -200,31 +214,15 @@ function cleanPreferences(input) {
   };
 }
 
-// Validates a workout object (from the browser or from an agent) and returns
-// a clean copy containing only whitelisted fields, so unknown or forged
-// fields (rev, pendingEdit, ...) can never sneak into the stored file.
-// Returns { workout } on success or { error } on failure.
-function validateAndCleanWorkout(input) {
-  if (!input || typeof input !== 'object' || Array.isArray(input)) {
-    return { error: 'Workout must be an object.' };
-  }
-  if (input.status !== 'in_progress') {
-    return { error: 'Workout status must be "in_progress".' };
-  }
-  if (!Array.isArray(input.exercises) || input.exercises.length === 0) {
-    return { error: 'Workout must contain at least one exercise.' };
-  }
-  if (input.exercises.length > LIMITS.maxExercises) {
-    return { error: `Too many exercises (max ${LIMITS.maxExercises}).` };
-  }
-  if (input.performedAt != null && input.performedAt !== '' &&
-      (typeof input.performedAt !== 'string' || isNaN(new Date(input.performedAt)))) {
-    return { error: 'performedAt must be a parseable date string.' };
-  }
-
+// Validates each exercise's targetSets and per-set weight/reps, returning
+// the cleaned base fields (name, muscleGroup, type, targetSets, targetReps,
+// sets) shared by both the in-progress workout schema and the history-edit
+// schema below. Caller must have already checked `exercisesInput` is a
+// non-empty array within LIMITS.maxExercises.
+function validateExerciseSets(exercisesInput) {
   const exercises = [];
-  for (let i = 0; i < input.exercises.length; i++) {
-    const ex = input.exercises[i];
+  for (let i = 0; i < exercisesInput.length; i++) {
+    const ex = exercisesInput[i];
     const label = `Exercise ${i + 1}`;
     if (!ex || typeof ex !== 'object') return { error: `${label} must be an object.` };
     if (typeof ex.name !== 'string' || !ex.name.trim()) return { error: `${label} needs a name.` };
@@ -264,12 +262,43 @@ function validateAndCleanWorkout(input) {
       type: cleanLine(ex.type, LIMITS.exerciseType),
       targetSets,
       targetReps: cleanLine(ex.targetReps, LIMITS.targetReps),
-      comment: cleanText(ex.comment, LIMITS.exerciseComment),
-      note: cleanText(ex.note, LIMITS.exerciseNote),
-      increaseWeightNextTime: ex.increaseWeightNextTime === true,
       sets
     });
   }
+  return { exercises };
+}
+
+// Validates a workout object (from the browser or from an agent) and returns
+// a clean copy containing only whitelisted fields, so unknown or forged
+// fields (rev, pendingEdit, ...) can never sneak into the stored file.
+// Returns { workout } on success or { error } on failure.
+function validateAndCleanWorkout(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { error: 'Workout must be an object.' };
+  }
+  if (input.status !== 'in_progress') {
+    return { error: 'Workout status must be "in_progress".' };
+  }
+  if (!Array.isArray(input.exercises) || input.exercises.length === 0) {
+    return { error: 'Workout must contain at least one exercise.' };
+  }
+  if (input.exercises.length > LIMITS.maxExercises) {
+    return { error: `Too many exercises (max ${LIMITS.maxExercises}).` };
+  }
+  if (input.performedAt != null && input.performedAt !== '' &&
+      (typeof input.performedAt !== 'string' || isNaN(new Date(input.performedAt)))) {
+    return { error: 'performedAt must be a parseable date string.' };
+  }
+
+  const { exercises: baseExercises, error } = validateExerciseSets(input.exercises);
+  if (error) return { error };
+
+  const exercises = baseExercises.map((base, i) => ({
+    ...base,
+    comment: cleanText(input.exercises[i].comment, LIMITS.exerciseComment),
+    note: cleanText(input.exercises[i].note, LIMITS.exerciseNote),
+    increaseWeightNextTime: input.exercises[i].increaseWeightNextTime === true
+  }));
 
   return {
     workout: {
@@ -282,6 +311,63 @@ function validateAndCleanWorkout(input) {
       comment: cleanText(input.comment, LIMITS.workoutComment)
     }
   };
+}
+
+// Validates an edited past workout (from the History view): date, per-set
+// weights/reps, exercise notes, the increase-weight flag, and the workout
+// comment. Exercise identity/order/count isn't user-editable there, so it
+// round-trips through the same set/target validation as the in-progress
+// schema above. Returns { workout } on success or { error } on failure.
+function validateAndCleanHistoryEdit(input) {
+  if (!input || typeof input !== 'object' || Array.isArray(input)) {
+    return { error: 'Workout must be an object.' };
+  }
+  if (typeof input.date !== 'string' || !input.date.trim() || isNaN(new Date(input.date))) {
+    return { error: 'date must be a parseable date string.' };
+  }
+  if (!Array.isArray(input.exercises) || input.exercises.length === 0) {
+    return { error: 'Workout must contain at least one exercise.' };
+  }
+  if (input.exercises.length > LIMITS.maxExercises) {
+    return { error: `Too many exercises (max ${LIMITS.maxExercises}).` };
+  }
+
+  const { exercises: baseExercises, error } = validateExerciseSets(input.exercises);
+  if (error) return { error };
+
+  const exercises = baseExercises.map((base, i) => ({
+    ...base,
+    comment: cleanText(input.exercises[i].comment, LIMITS.exerciseNote),
+    increaseWeightNextTime: input.exercises[i].increaseWeightNextTime === true
+  }));
+
+  return {
+    workout: {
+      date: cleanLine(input.date, 30),
+      comment: cleanText(input.comment, LIMITS.workoutComment),
+      exercises
+    }
+  };
+}
+
+// Names from templates/exercise-library.json — the only exercises the
+// generation/edit agents are allowed to introduce. Read fresh each call
+// (the file is tiny and rarely changes) rather than cached, so an edit to
+// the plan takes effect without a server restart.
+function loadExerciseLibraryNames() {
+  const lib = readJson(path.join(TEMPLATES_DIR, 'exercise-library.json'));
+  const entries = lib && Array.isArray(lib.exercises) ? lib.exercises : [];
+  return new Set(entries.map((e) => String(e.name || '').trim().toLowerCase()));
+}
+
+// Returns the names of any exercises not found in the plan's library, so
+// agent output that hallucinates an exercise can be rejected instead of
+// silently published.
+function findExercisesNotInLibrary(exercises) {
+  const names = loadExerciseLibraryNames();
+  return exercises
+    .map((e) => e.name)
+    .filter((name) => !names.has(String(name).trim().toLowerCase()));
 }
 
 // --- Auth -------------------------------------------------------------------
@@ -477,16 +563,17 @@ function generateWorkout() {
       ? validateAndCleanWorkout(output)
       : { error: 'The agent did not produce a workout file.' };
 
-    if (workout) {
+    const badNames = workout ? findExercisesNotInLibrary(workout.exercises) : [];
+
+    if (workout && badNames.length === 0) {
       writeJson(CURRENT_WORKOUT_PATH, { ...workout, preferences, rev: 1 });
     } else {
-      writeJson(CURRENT_WORKOUT_PATH, {
-        status: 'error',
-        message: code === 0
+      const message = badNames.length
+        ? `The agent proposed exercise(s) not in your workout plan: ${badNames.join(', ')}. Try again.`
+        : code === 0
           ? `The agent finished but did not produce a valid workout. (${error})`
-          : `Workout generation failed (exit code ${code}). ${stderr.slice(-500)}`,
-        preferences
-      });
+          : `Workout generation failed (exit code ${code}). ${stderr.slice(-500)}`;
+      writeJson(CURRENT_WORKOUT_PATH, { status: 'error', message, preferences });
     }
   });
 
@@ -599,10 +686,15 @@ function runExerciseEdit({ action, exerciseIndex, reason }) {
     if (!failure) {
       const { workout, error } = validateAndCleanWorkout(output);
       if (workout) {
-        writeJson(CURRENT_WORKOUT_PATH, { ...workout, rev: nextRev });
-        return;
+        const badNames = findExercisesNotInLibrary(workout.exercises);
+        if (badNames.length === 0) {
+          writeJson(CURRENT_WORKOUT_PATH, { ...workout, rev: nextRev });
+          return;
+        }
+        failure = `The agent proposed exercise(s) not in your workout plan: ${badNames.join(', ')}.`;
+      } else {
+        failure = `The agent produced an invalid workout: ${error}`;
       }
-      failure = `The agent produced an invalid workout: ${error}`;
     }
 
     const restored = { ...disk, pendingEditError: failure, rev: nextRev };
@@ -836,7 +928,7 @@ app.get('/api/history', (req, res) => {
   const workoutsById = new Map();
 
   rows.forEach((row) => {
-    const id = row.workout_id || `${row.date}-${row.workout_title}`;
+    const id = historyWorkoutId(row);
     if (!workoutsById.has(id)) {
       workoutsById.set(id, {
         id,
@@ -872,6 +964,87 @@ app.get('/api/history', (req, res) => {
     .sort((a, b) => (a.date < b.date ? 1 : -1));
 
   res.json(workouts);
+});
+
+// Edit a past workout: date, per-set weights/reps, exercise notes, the
+// increase-weight flag, and the workout comment. Exercise identity/order
+// isn't editable here — only what could actually be a logging mistake.
+// Rewrites the matching rows in place (rather than dropping and
+// re-appending) so chronological order — which recentHistoryCsv() and the
+// last-performed endpoint both rely on — is preserved.
+app.put('/api/history/:id', (req, res) => {
+  const id = req.params.id;
+  const rows = readHistoryRows();
+  const matching = rows.filter((r) => historyWorkoutId(r) === id);
+  if (matching.length === 0) {
+    return res.status(404).json({ error: 'Workout not found.' });
+  }
+
+  const { workout, error } = validateAndCleanHistoryEdit(req.body);
+  if (error) {
+    return res.status(400).json({ error });
+  }
+
+  const template = matching[0];
+  const newRows = [];
+  workout.exercises.forEach((exercise) => {
+    exercise.sets.forEach((set) => {
+      newRows.push({
+        date: workout.date,
+        workout_id: template.workout_id,
+        workout_title: template.workout_title,
+        focus: template.focus,
+        muscle_group: exercise.muscleGroup,
+        exercise: exercise.name,
+        exercise_type: exercise.type,
+        set_number: set.setNumber,
+        target_sets: exercise.targetSets,
+        target_reps: exercise.targetReps,
+        weight: set.weight != null ? set.weight : '',
+        reps: set.reps != null ? set.reps : '',
+        exercise_comment: exercise.comment,
+        workout_comment: workout.comment,
+        increase_weight_next_time: exercise.increaseWeightNextTime ? 'true' : 'false'
+      });
+    });
+  });
+
+  let inserted = false;
+  const rewritten = [];
+  rows.forEach((row) => {
+    if (historyWorkoutId(row) !== id) {
+      rewritten.push(row);
+    } else if (!inserted) {
+      rewritten.push(...newRows);
+      inserted = true;
+    }
+  });
+
+  writeHistoryRows(rewritten);
+  res.json({ ok: true });
+});
+
+// Last time each exercise was performed: the date, and the heaviest set
+// logged that day. Computed straight from the CSV so it's always accurate
+// and in kg (the client converts to the display unit) — unlike the
+// generation agent's free-text "last time" guess in the comment field.
+app.get('/api/exercises/last-performed', (req, res) => {
+  const rows = readHistoryRows().filter((r) => r.exercise && (r.weight !== '' || r.reps !== ''));
+
+  const lastDateByExercise = {};
+  rows.forEach((row) => { lastDateByExercise[row.exercise] = row.date; });
+
+  const result = {};
+  rows.forEach((row) => {
+    if (row.date !== lastDateByExercise[row.exercise]) return;
+    const weight = parseFloat(row.weight) || 0;
+    const reps = parseFloat(row.reps) || 0;
+    if (!result[row.exercise] || weight > result[row.exercise].weight) {
+      result[row.exercise] = { date: row.date, weight, reps };
+    }
+  });
+
+  res.json(result);
 });
 
 // Trend / progress stats derived from the CSV datasheet.
@@ -943,5 +1116,6 @@ module.exports = {
   cleanLine,
   cleanPreferences,
   validateAndCleanWorkout,
+  validateAndCleanHistoryEdit,
   isoWeekKey
 };

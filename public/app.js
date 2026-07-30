@@ -18,6 +18,7 @@ let workoutState = null; // in-memory copy of the current workout while logging
 let currentView = 'home';
 let generatingPollTimer = null;
 let collapsedExercises = new Set(); // exercise names currently minimized, for overview during a workout
+let lastPerformedByExercise = {}; // exercise name -> {date, weight (kg), reps}, for the "Last: ..." line
 
 Chart.defaults.color = '#9aa0ab';
 Chart.defaults.borderColor = '#2e333d';
@@ -113,6 +114,12 @@ function wireLogin() {
 
 const KG_PER_LB = 0.45359237;
 
+const unitConversionEl = document.getElementById('unit-conversion');
+if (unitConversionEl) {
+  const lbPerKg = (1 / KG_PER_LB).toFixed(1);
+  unitConversionEl.textContent = `1 kg ≈ ${lbPerKg} lb  ·  1 lb ≈ ${KG_PER_LB.toFixed(2)} kg`;
+}
+
 function getUnit() {
   return localStorage.getItem('momentum-unit') || 'lb';
 }
@@ -174,7 +181,12 @@ async function loadCurrentWorkout() {
   container.innerHTML = '<p class="empty-state">Loading…</p>';
   let workout;
   try {
-    workout = await api('/api/current-workout');
+    const [w, last] = await Promise.all([
+      api('/api/current-workout'),
+      api('/api/exercises/last-performed').catch(() => ({}))
+    ]);
+    workout = w;
+    lastPerformedByExercise = last || {};
   } catch (err) {
     if (err.status === 401) return;
     container.innerHTML = `<p class="empty-state">Could not load the workout: ${escapeHtml(err.message)}<br><br><button class="secondary-btn" id="reload-current">Retry</button></p>`;
@@ -311,8 +323,14 @@ function renderInProgress(container, workout) {
     const completedSets = sets.filter((s) => s.weight != null && s.reps != null).length;
     const isDone = sets.length > 0 && completedSets === sets.length;
 
+    const last = lastPerformedByExercise[ex.name];
+    const lastHtml = last
+      ? `<div class="exercise-meta last-performed">Last: ${formatShortDate(last.date)} · ${last.weight ? `${kgToDisplay(last.weight)}${getUnit()}` : 'bodyweight'} × ${last.reps}</div>`
+      : '';
+
     const bodyHtml = isCollapsed ? '' : `
       <div class="exercise-meta">Target: ${ex.targetSets}×${escapeHtml(ex.targetReps || '')}${ex.comment ? ` · ${escapeHtml(ex.comment)}` : ''}</div>
+      ${lastHtml}
       ${sets.map((set, setIdx) => `
         <div class="set-row">
           <span class="set-label">#${set.setNumber != null ? set.setNumber : setIdx + 1}</span>
@@ -700,39 +718,186 @@ function promptForText(message, placeholder) {
 }
 
 // --- History -------------------------------------------------------------
+// Past workouts are read-only by default. Tapping "Edit" on one switches
+// just that item into an editable form (mirroring the current-workout set
+// rows) and PUTs the result to /api/history/:id on save, which rewrites the
+// matching rows in the CSV datasheet in place.
+
+let historyWorkouts = [];
+let editingHistoryId = null;
+let historyDraft = null; // deep-cloned copy of the workout being edited
 
 async function loadHistory() {
   const container = document.getElementById('history-content');
   container.innerHTML = '<p class="empty-state">Loading…</p>';
-  let workouts;
+  editingHistoryId = null;
+  historyDraft = null;
   try {
-    workouts = await api('/api/history');
+    historyWorkouts = await api('/api/history');
   } catch (err) {
     if (err.status === 401) return;
     container.innerHTML = `<p class="empty-state">Could not load history: ${escapeHtml(err.message)}</p>`;
     return;
   }
+  renderHistory();
+}
 
-  if (!workouts.length) {
+function renderHistory() {
+  const container = document.getElementById('history-content');
+  if (!historyWorkouts.length) {
     container.innerHTML = '<p class="empty-state">No completed workouts yet.</p>';
     return;
   }
 
-  container.innerHTML = `<div class="card" style="padding:0;">` + workouts.map((w) => `
-    <details class="history-item">
+  container.innerHTML = `<div class="card" style="padding:0;">` + historyWorkouts.map((w) => {
+    const isEditing = w.id === editingHistoryId;
+    return `
+    <details class="history-item"${isEditing ? ' open' : ''}>
       <summary><span>${escapeHtml(w.title || 'Workout')} — ${escapeHtml(formatDateTime(w.date))}</span>${w.focus ? `<span class="pill">${escapeHtml(w.focus)}</span>` : ''}</summary>
-      ${w.exercises.map((ex) => `
-        <div class="history-exercise">
-          <strong>${escapeHtml(ex.name)}</strong>
-          <span class="exercise-meta">${escapeHtml(ex.muscleGroup || '')}</span>
-          <div class="history-sets">${ex.sets.map((s) => `${s.weight ? kgToDisplay(s.weight) : '-'}${getUnit()}×${s.reps || '-'}`).join('  ·  ')}</div>
-          ${ex.comment ? `<div class="exercise-meta">"${escapeHtml(ex.comment)}"</div>` : ''}
-          ${ex.increaseWeightNextTime ? '<div class="exercise-meta increase-flag">&#8593; increase weight next time</div>' : ''}
-        </div>
-      `).join('')}
-      ${w.comment ? `<p class="exercise-meta" style="margin-top:0.75rem;">"${escapeHtml(w.comment)}"</p>` : ''}
+      ${isEditing ? renderHistoryEditForm(historyDraft) : renderHistoryReadOnly(w)}
     </details>
-  `).join('') + `</div>`;
+  `;
+  }).join('') + `</div>`;
+
+  if (!editingHistoryId) {
+    container.querySelectorAll('[data-edit-history]').forEach((btn) => {
+      btn.addEventListener('click', (e) => {
+        e.preventDefault();
+        const w = historyWorkouts.find((x) => x.id === btn.dataset.editHistory);
+        editingHistoryId = w.id;
+        historyDraft = JSON.parse(JSON.stringify(w));
+        renderHistory();
+      });
+    });
+    return;
+  }
+
+  wireHistoryEditForm(container);
+}
+
+function renderHistoryReadOnly(w) {
+  return `
+    ${w.exercises.map((ex) => `
+      <div class="history-exercise">
+        <strong>${escapeHtml(ex.name)}</strong>
+        <span class="exercise-meta">${escapeHtml(ex.muscleGroup || '')}</span>
+        <div class="history-sets">${ex.sets.map((s) => `${s.weight ? kgToDisplay(s.weight) : '-'}${getUnit()}×${s.reps || '-'}`).join('  ·  ')}</div>
+        ${ex.comment ? `<div class="exercise-meta">"${escapeHtml(ex.comment)}"</div>` : ''}
+        ${ex.increaseWeightNextTime ? '<div class="exercise-meta increase-flag">&#8593; increase weight next time</div>' : ''}
+      </div>
+    `).join('')}
+    ${w.comment ? `<p class="exercise-meta" style="margin-top:0.75rem;">"${escapeHtml(w.comment)}"</p>` : ''}
+    <div class="action-row" style="grid-template-columns:1fr;margin-top:0.75rem;">
+      <button type="button" class="secondary-btn" data-edit-history="${escapeAttr(w.id)}">Edit</button>
+    </div>
+  `;
+}
+
+function renderHistoryEditForm(draft) {
+  return `
+    <label class="field-label">
+      Performed at
+      <input type="datetime-local" id="history-edit-date" value="${escapeAttr(draft.date)}">
+    </label>
+    ${draft.exercises.map((ex, exIdx) => `
+      <div class="history-exercise">
+        <strong>${escapeHtml(ex.name)}</strong>
+        <span class="exercise-meta">${escapeHtml(ex.muscleGroup || '')}</span>
+        ${ex.sets.map((set, setIdx) => `
+          <div class="set-row">
+            <span class="set-label">#${setIdx + 1}</span>
+            <input type="number" inputmode="decimal" placeholder="${getUnit()}" data-hist-field="weight" data-hist-ex="${exIdx}" data-hist-set="${setIdx}" value="${set.weight !== '' && set.weight != null ? kgToDisplay(set.weight) : ''}">
+            <input type="number" inputmode="numeric" placeholder="reps" data-hist-field="reps" data-hist-ex="${exIdx}" data-hist-set="${setIdx}" value="${set.reps !== '' && set.reps != null ? set.reps : ''}">
+            <button type="button" class="remove-set-btn" data-hist-remove-set data-hist-ex="${exIdx}" data-hist-set="${setIdx}" ${ex.sets.length <= 1 ? 'disabled' : ''}>&times;</button>
+          </div>
+        `).join('')}
+        <button type="button" class="add-set-btn" data-hist-add-set="${exIdx}">+ Add set</button>
+        <textarea class="exercise-comment" rows="1" placeholder="Notes for this exercise" data-hist-note="${exIdx}">${escapeHtml(ex.comment || '')}</textarea>
+        <label class="increase-weight-label">
+          <input type="checkbox" data-hist-increase-weight="${exIdx}" ${ex.increaseWeightNextTime ? 'checked' : ''}>
+          Increase weight next time
+        </label>
+      </div>
+    `).join('')}
+    <label class="field-label">
+      Workout comment
+      <textarea id="history-edit-comment" class="exercise-comment" rows="2">${escapeHtml(draft.comment || '')}</textarea>
+    </label>
+    <div class="action-row">
+      <button type="button" class="secondary-btn" id="history-edit-cancel">Cancel</button>
+      <button type="button" class="primary-btn" id="history-edit-save">Save</button>
+    </div>
+  `;
+}
+
+function wireHistoryEditForm(container) {
+  container.querySelectorAll('input[data-hist-field]').forEach((input) => {
+    input.addEventListener('input', (e) => {
+      const { histField, histEx, histSet } = e.target.dataset;
+      const set = historyDraft.exercises[Number(histEx)].sets[Number(histSet)];
+      if (histField === 'weight') {
+        set.weight = e.target.value === '' ? null : displayToKg(e.target.value);
+      } else {
+        set.reps = e.target.value === '' ? null : Number(e.target.value);
+      }
+    });
+  });
+  container.querySelectorAll('[data-hist-add-set]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const exIdx = Number(e.target.dataset.histAddSet);
+      const sets = historyDraft.exercises[exIdx].sets;
+      sets.push({ setNumber: sets.length + 1, weight: null, reps: null });
+      renderHistory();
+    });
+  });
+  container.querySelectorAll('[data-hist-remove-set]').forEach((btn) => {
+    btn.addEventListener('click', (e) => {
+      const exIdx = Number(e.target.dataset.histEx);
+      const setIdx = Number(e.target.dataset.histSet);
+      const sets = historyDraft.exercises[exIdx].sets;
+      if (sets.length <= 1) return;
+      sets.splice(setIdx, 1);
+      sets.forEach((s, i) => { s.setNumber = i + 1; });
+      renderHistory();
+    });
+  });
+  container.querySelectorAll('textarea[data-hist-note]').forEach((textarea) => {
+    textarea.addEventListener('input', (e) => {
+      historyDraft.exercises[Number(e.target.dataset.histNote)].comment = e.target.value;
+    });
+  });
+  container.querySelectorAll('input[data-hist-increase-weight]').forEach((checkbox) => {
+    checkbox.addEventListener('change', (e) => {
+      historyDraft.exercises[Number(e.target.dataset.histIncreaseWeight)].increaseWeightNextTime = e.target.checked;
+    });
+  });
+  const dateInput = document.getElementById('history-edit-date');
+  if (dateInput) dateInput.addEventListener('input', (e) => { historyDraft.date = e.target.value; });
+  const commentInput = document.getElementById('history-edit-comment');
+  if (commentInput) commentInput.addEventListener('input', (e) => { historyDraft.comment = e.target.value; });
+
+  const cancelBtn = document.getElementById('history-edit-cancel');
+  if (cancelBtn) cancelBtn.addEventListener('click', () => {
+    editingHistoryId = null;
+    historyDraft = null;
+    renderHistory();
+  });
+
+  const saveBtn = document.getElementById('history-edit-save');
+  if (saveBtn) saveBtn.addEventListener('click', async () => {
+    saveBtn.disabled = true;
+    try {
+      await api(`/api/history/${encodeURIComponent(editingHistoryId)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(historyDraft)
+      });
+      await loadHistory();
+    } catch (err) {
+      saveBtn.disabled = false;
+      if (err.status !== 401) await showMessage(`Could not save: ${err.message}`);
+    }
+  });
 }
 
 // --- Trends ----------------------------------------------------------------
@@ -833,6 +998,22 @@ function nowLocalISO() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Formats a plain YYYY-MM-DD (or full timestamp) as a short local date,
+// e.g. "Jul 20". Parses year/month/day as local components rather than
+// through `new Date(str)` directly, since that treats a bare date as UTC
+// midnight and can shift a day early in negative-offset timezones.
+function formatShortDate(str) {
+  if (!str) return '';
+  const ymd = /^(\d{4})-(\d{2})-(\d{2})/.exec(String(str));
+  const d = ymd
+    ? new Date(Number(ymd[1]), Number(ymd[2]) - 1, Number(ymd[3]))
+    : new Date(str);
+  if (isNaN(d)) return str;
+  const opts = { month: 'short', day: 'numeric' };
+  if (d.getFullYear() !== new Date().getFullYear()) opts.year = 'numeric';
+  return d.toLocaleDateString(undefined, opts);
 }
 
 function formatDateTime(str) {

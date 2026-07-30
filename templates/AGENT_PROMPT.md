@@ -60,8 +60,10 @@ Then write `data/current-workout.json`, matching the schema in
 - `title`: short label, e.g. "Push Day", "Legs", "Upper Mix".
 - `preferences`: copy verbatim from `data/workout-request.json`.
 - `exercises`: 5 exercises (fewer if `timeAvailableMinutes` is tight),
-  chosen from `exercise-library.json`'s `exercises` list, respecting its
-  `avoid` list and honoring `preferences.focus` / `preferences.notes` (e.g.
+  chosen ONLY from `exercise-library.json`'s `exercises` list (`name` must
+  match an entry exactly — never invent, rename, or substitute a variant
+  that isn't listed there) respecting its `avoid` list and honoring
+  `preferences.focus` / `preferences.notes` (e.g.
   "only 30 min today" -> trim to 3-4 exercises or supersets; "upper body
   only, hiking later" -> skip legs). Lean on an `exampleWorkouts` grouping
   as a starting point where it fits, then use recent history against
@@ -70,9 +72,13 @@ Then write `data/current-workout.json`, matching the schema in
   - `muscleGroup` / `type` / `targetReps`: copy straight from the matching
     entry in `exercise-library.json`.
   - `targetSets`: `setsPerExercise` from `exercise-library.json`.
-  - `comment`: optional short note to help me at the gym, e.g. "last time:
-    30kg x8,8,7 — aim for 10 reps before adding weight". This is shown as
-    read-only context above the sets, not something I edit.
+  - `comment`: optional short coaching note to help me at the gym — a
+    progression tip, form cue, or reason for a substitution, e.g. "aim for
+    10 reps before adding weight". This is shown as read-only context above
+    the sets, not something I edit. The dashboard already shows the last
+    time I did this exercise (date, weight, reps) computed straight from the
+    CSV, so don't restate that here — just add something the raw numbers
+    don't.
   - `note`: always `""` — this is a free-text box I fill in myself at the
     gym (not something to pre-fill), and it becomes next time's
     `exercise_comment` in the CSV history.

@@ -53,6 +53,10 @@ whole file back — that's more reliable here than a targeted string edit.
   group unless my reason rules that out (e.g. an injury affecting that
   whole group), in which case pick a sensible alternative that still fits
   the workout's overall focus.
+- The new exercise must come ONLY from `exercise-library.json`'s
+  `exercises` list — `name` must match an entry exactly, never an invented,
+  renamed, or unlisted variant. If nothing in the library fits (see the
+  fallback at the bottom of this prompt), don't make one up.
 - The new exercise object must match the schema in
   `templates/workout-template.json`: `name`, `muscleGroup`, `type`,
   `targetReps` (copy `muscleGroup`/`type`/`targetReps` straight from the
