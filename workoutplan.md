@@ -5,7 +5,7 @@
 - Build muscle over the next 2 months
 - Keep workouts simple and easy to start
 - Minimize injury risk
-- Use mostly machines and dumbbells
+- Use mostly machines and dumbbells, plus selected barbell lifts
 - Flexible schedule (typically every other day, ~4 workouts/week)
 - Progressive overload and consistent tracking
 
@@ -17,7 +17,6 @@
 - 45–65 minutes per workout
 - 5–6 exercises per workout
 - Mostly machines and dumbbells
-- Avoid heavy barbell exercises
 - Focus on consistency rather than perfection
 
 ---
@@ -75,7 +74,7 @@ Purpose:
 
 ## Shoulders
 
-- Dumbbell Overhead Press
+- Barbell Overhead Press
 - Dumbbell/Cable Lateral Raise
 - Reverse Pec Deck
 
@@ -106,7 +105,7 @@ Purpose:
 ### Hamstrings
 
 - Seated Leg Curl
-- Romanian Deadlift (Dumbbells)
+- Conventional Deadlift
 
 ---
 
@@ -119,18 +118,15 @@ Purpose:
 ## Core
 
 - Hanging Leg Raise
-- Cable Crunch
 
 ---
 
 # Exercises to Avoid
 
-Not because they're bad, but because simplicity and injury prevention are priorities.
+These are excluded based on exercise preference; equivalent muscle groups are covered with dumbbells or machines.
 
 - Barbell Squat
-- Conventional Deadlift
 - Barbell Bench Press
-- Barbell Overhead Press
 
 ---
 
@@ -140,19 +136,19 @@ Not because they're bad, but because simplicity and injury prevention are priori
 
 Examples:
 
-- Bench Press
-- Incline Bench
-- Overhead Press
+- Dumbbell Bench Press
+- Incline Dumbbell Bench Press
+- Barbell Overhead Press
+- Conventional Deadlift
 - Lat Pulldown
 - Pull-ups
 - Rows
 - Leg Press
-- Romanian Deadlift
 - Bulgarian Split Squat
 
 **3 working sets**
 
-**6–10 reps** (8–12 for Leg Press / RDL, 10–15 for Split Squat)
+**6–10 reps** (5–8 for Conventional Deadlift, 8–12 for Leg Press, 10–15 for Split Squat)
 
 ---
 
@@ -168,7 +164,6 @@ Examples:
 - Leg Curl
 - Leg Extension
 - Back Extension
-- Cable Crunch
 - Hanging Leg Raise
 
 **3 working sets**
@@ -217,7 +212,7 @@ Rule:
 
 # Weekly Training Volume
 
-With every exercise capped at **3 working sets**, the original 82-set/week table isn't reachable without adding more exercise slots. The schedule below trades some volume for simplicity/time, landing at **66 sets/week** — still a solid range for growth, just not maxed out.
+With every exercise capped at **3 working sets**, the original 82-set/week table isn't reachable without adding more exercise slots. The schedule below trades some volume for simplicity/time, landing at **63 sets/week** — still a solid range for growth, just not maxed out.
 
 | Muscle | Original Target | Actual (3-set cap) |
 |---------|------------:|------------:|
@@ -229,8 +224,8 @@ With every exercise capped at **3 working sets**, the original 82-set/week table
 | Quads | 10 | 9 |
 | Hamstrings | 8 | 6 |
 | Lower Back | 4 | 3 |
-| Core | 6 | 6 |
-| **Total** | **82** | **66** |
+| Core | 6 | 3 |
+| **Total** | **82** | **63** |
 
 If you later want to close the gap back toward the original target, the only way while keeping 3 sets/exercise is to add more exercise slots (an extra exercise per day, or a 5th day) — no need to think about that now.
 
@@ -242,7 +237,7 @@ If you later want to close the gap back toward the original target, the only way
 
 - Dumbbell Bench Press — 3×6–10
 - Incline Dumbbell Bench Press — 3×6–10
-- Dumbbell Overhead Press — 3×6–10
+- Barbell Overhead Press — 3×6–10
 - Lateral Raise — 3×10–15
 - Rope Pushdown — 3×10–15
 
@@ -260,14 +255,13 @@ If you later want to close the gap back toward the original target, the only way
 
 ## Workout C – Legs
 
+- Conventional Deadlift — 3×5–8
 - Leg Press — 3×8–12
 - Leg Extension — 3×10–15
 - Seated Leg Curl — 3×10–15
-- Romanian Deadlift — 3×8–12
 - Back Extension — 3×12–15
-- Cable Crunch — 3×10–15
 
-*(6 exercises — this day runs closer to 55–60 min; drop Leg Extension or Cable Crunch if you're tight on time)*
+*(5 exercises — allow extra rest before deadlift working sets and keep every rep controlled)*
 
 ---
 
@@ -294,8 +288,8 @@ If you later want to close the gap back toward the original target, the only way
 | Quads | – | – | 6 | 3 | 9 |
 | Hamstrings | – | – | 6 | – | 6 |
 | Lower Back | – | – | 3 | – | 3 |
-| Core | – | 3 | 3 | – | 6 |
-| **Total** | | | | | **66** |
+| Core | – | 3 | – | – | 3 |
+| **Total** | | | | | **63** |
 
 ---
 
